@@ -27,7 +27,7 @@ volatile uint8_t ppmAge = 0; // age of PPM data
 
 volatile uint8_t ppmCounter = 255; // ignore data until first sync pulse
 
-uint8_t serialMode = 0; // 0 normal, 1 spektrum 1024 , 2 spektrum 2048, 3 SBUS, 4 SUMD
+uint8_t serialMode = 0; // 0 normal, 1 spektrum 1024, 2 spektrum 2048, 3 SBUS, 4 SUMD, 5 MULTI
 
 struct sbus_help {
   uint16_t ch0 : 11;
@@ -399,7 +399,14 @@ void setup(void)
   setupProfile();
   txReadEeprom();
 
-  setupPPMinput();
+  if (bind_data.serial_baudrate && (bind_data.serial_baudrate <= 5)) {
+    serialMode = bind_data.serial_baudrate;
+  }
+
+  if (!serialMode) {
+	  setupPPMinput();
+  }
+
   ppmAge = 255;
 
   setupRfmInterrupt();
@@ -426,12 +433,15 @@ void setup(void)
 
   checkBND();
 
-  if (bind_data.serial_baudrate && (bind_data.serial_baudrate < 5)) {
-    serialMode = bind_data.serial_baudrate;
-    TelemetrySerial.begin((serialMode == 3) ? 100000 : 115200); // SBUS is 100000 rest 115200
-  } else {
+  if (!serialMode) {
     // switch to userdefined baudrate here
     TelemetrySerial.begin(bind_data.serial_baudrate);
+  } else if (serialMode == 3) { // SBUS
+    TelemetrySerial.begin(100000);
+  } else if (serialMode == 5) { // MULTI
+    TelemetrySerial.begin(100000, SERIAL_8E2);
+  } else { // serialModes Spektrum / SUMD
+    TelemetrySerial.begin(115200);
   }
   checkButton();
 
@@ -465,7 +475,8 @@ void setup(void)
   }
 
   if (bind_data.flags & TELEMETRY_FRSKY) {
-    frskyInit((bind_data.flags & TELEMETRY_MASK) == TELEMETRY_SMARTPORT);
+    frskyInit((bind_data.flags & TELEMETRY_MASK) == TELEMETRY_SMARTPORT,
+      serialMode != 0);
   } else if (bind_data.flags & TELEMETRY_MASK) {
     // ?
   }
@@ -488,6 +499,8 @@ uint8_t compositeRSSI(uint8_t rssi, uint8_t linkq)
 #define SPKTRM_SYNC1 0x03
 #define SPKTRM_SYNC2 0x01
 #define SUMD_HEAD 0xa8
+#define MULTI_HEADER 0x55
+#define MULTI_PROTOCOL_FRSKY 0x3
 
 uint8_t frameIndex=0;
 uint32_t srxLast=0;
@@ -559,6 +572,65 @@ static inline void processSBUS(uint8_t c)
   lastSerialPPM = millis();
 }
 
+static uint16_t calculateChannel(uint16_t input) {
+  uint32_t value = input;
+  if (value < 204) { // [-125%, -100%)
+    value = 12;
+  } else if (value <= 1843) { // [-100%, 100%]
+    value = (((value - 204) * 999) / 1639) + 12;
+  } else { // (100%, 125%]
+    value = 1011;
+  }
+
+  return (uint16_t)value;
+}
+
+static inline void processMULTI(uint8_t c)
+{
+  if (frameIndex == 0) {
+    if (c == MULTI_HEADER) {
+      frameIndex++;
+    }
+  } else if (frameIndex == 1) {
+    if ((c & 0x0f) == MULTI_PROTOCOL_FRSKY) {
+      frameIndex++;
+    } else {
+      frameIndex = 0;
+    }
+  } else if (frameIndex == 2) {
+    frameIndex++;
+  } else if (frameIndex == 3) {
+    frameIndex++;
+  } else if (frameIndex <= 25) {
+    ppmWork.bytes[(frameIndex++) - 4] = c;
+    
+    if (frameIndex == 25) {
+      if ((ppmWork.sbus.status & 0x08) == 0) {
+        uint8_t set;
+        for (set = 0; set < 2; set++) {
+          PPM[(set << 3)] = calculateChannel(ppmWork.sbus.ch[set].ch0);
+          PPM[(set << 3) + 1] = calculateChannel(ppmWork.sbus.ch[set].ch1);
+          PPM[(set << 3) + 2] = calculateChannel(ppmWork.sbus.ch[set].ch2);
+          PPM[(set << 3) + 3] = calculateChannel(ppmWork.sbus.ch[set].ch3);
+          PPM[(set << 3) + 4] = calculateChannel(ppmWork.sbus.ch[set].ch4);
+          PPM[(set << 3) + 5] = calculateChannel(ppmWork.sbus.ch[set].ch5);
+          PPM[(set << 3) + 6] = calculateChannel(ppmWork.sbus.ch[set].ch6);
+          PPM[(set << 3) + 7] = calculateChannel(ppmWork.sbus.ch[set].ch7);
+        }
+
+#ifdef DEBUG_DUMP_PPM
+        ppmDump = 1;
+#endif
+        ppmAge = 0;
+      }
+
+      frameIndex = 0;
+    }
+  } else {
+    frameIndex = 0;
+  }
+}
+
 static inline void processSUMD(uint8_t c)
 {
   if ((frameIndex == 0) && (c == SUMD_HEAD)) {
@@ -616,6 +688,8 @@ void processChannelsFromSerial(uint8_t c)
     processSBUS(c);
   } else if (serialMode==4) { // SUMD
     processSUMD(c);
+  } else if (serialMode == 5) { // MULTI
+    processMULTI(c);
   }
 }
 
@@ -624,9 +698,13 @@ uint16_t getChannel(uint8_t ch)
   uint16_t v=512;
   ch = tx_config.chmap[ch];
   if (ch < 16) {
-    cli();  // disable interrupts when copying servo positions, to avoid race on 2 byte variable written by ISR
-    v = PPM[ch];
-    sei();
+    if (!serialMode) {
+      cli();  // disable interrupts when copying servo positions, to avoid race on 2 byte variable written by ISR
+      v = PPM[ch];
+      sei();
+    } else {
+      v = PPM[ch];
+    }
   } else if ((ch > 0xf1) && (ch < 0xfd)) {
     v = 12 + (ch - 0xf2) * 100;
   } else {
