@@ -56,14 +56,8 @@ struct rxSpecialPinMap {
 };
 
 #if (COMPILE_TX == 1)
-// Needed by dialog code
-static const char *specialStrs[] = { "PPM","RSSI","SDA","SCL","RXD","TXD","AIN","LBEEP",
-                                     "SPKTRM", "SBUS", "SUMD", "LLIND", "", "", "", ""
-                                   };
-#define SPECIALSTR(x) (specialStrs[(x)&0x0f]) // note must be changed if not 16 strings
-#endif
-
 #define CLI_ENABLED
+#endif
 
 //####### Board Pinouts #########
 
@@ -1423,4 +1417,12 @@ void setupRfmInterrupt()
   attachInterrupt(IRQ_interrupt, RFM22B_Int, FALLING);
 }
 
+#endif
+
+#ifdef CLI_ENABLED
+// Needed by dialog code
+static const char *specialStrs[] = { "PPM","RSSI","SDA","SCL","RXD","TXD","AIN","LBEEP",
+                                     "SPKTRM", "SBUS", "SUMD", "LLIND", "", "", "", ""
+                                   };
+#define SPECIALSTR(x) (specialStrs[(x)&0x0f]) // note must be changed if not 16 strings
 #endif
