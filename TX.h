@@ -105,16 +105,17 @@ static inline void processPulse(uint16_t pulse)
 
 #ifdef USE_ICP1 // Use ICP1 in input capture mode
 volatile uint16_t startPulse = 0;
-ISR(TIMER1_CAPT_vect)
+/*ISR(TIMER1_CAPT_vect)
 {
   uint16_t stopPulse = ICR1;
   processPulse(stopPulse - startPulse); // as top is 65535 uint16 math will take care of rollover
   startPulse = stopPulse;         // Save time at pulse start
 }
+*/
 
 void setupPPMinput()
 {
-  // Setup timer1 for input capture (PSC=8 -> 0.5ms precision)
+/*  // Setup timer1 for input capture (PSC=8 -> 0.5ms precision)
   TCCR1A = ((1 << WGM10) | (1 << WGM11));
   TCCR1B = ((1 << WGM12) | (1 << WGM13) | (1 << CS11) | (1 <<ICNC1));
   // normally capture on rising edge, allow invertting via SW flag
@@ -123,10 +124,11 @@ void setupPPMinput()
   }
   OCR1A = 65535;
   TIMSK1 |= (1 << ICIE1);   // Enable timer1 input capture interrupt
+*/
 }
 
 #else // sample PPM using pinchange interrupt
-ISR(PPM_Signal_Interrupt)
+/*ISR(PPM_Signal_Interrupt)
 {
   uint16_t pulseWidth;
   if ( (tx_config.flags & INVERTED_PPMIN) ^ PPM_Signal_Edge_Check) {
@@ -135,15 +137,17 @@ ISR(PPM_Signal_Interrupt)
     processPulse(pulseWidth);
   }
 }
+*/
 
 void setupPPMinput(void)
 {
-  // Setup timer1 for input capture (PSC=8 -> 0.5ms precision)
+/*  // Setup timer1 for input capture (PSC=8 -> 0.5ms precision)
   TCCR1A = ((1 << WGM10) | (1 << WGM11));
   TCCR1B = ((1 << WGM12) | (1 << WGM13) | (1 << CS11));
   OCR1A = 65535;
   TIMSK1 = 0;
   PPM_Pin_Interrupt_Setup
+*/
 }
 #endif
 

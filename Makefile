@@ -106,6 +106,9 @@ CFLAGS=-Wall -ffunction-sections -fdata-sections -mmcu=$(CPU) -DF_CPU=$(CLOCK) -
 	-DUSB_VID=$(USB_VID) -DUSB_PID=$(USB_PID) -DARDUINO=105 -D__PROG_TYPES_COMPAT__ $(DEFINES)
 CXXFLAGS=-fno-exceptions -std=gnu++11 -fno-threadsafe-statics
 
+LIBS=SoftwareSerial
+LIB_OBJS=$(patsubst %.cpp, libraries/%.o, $(addsuffix .cpp,$(LIBS)))
+
 #
 # Arduino libraries used, compilation settings.
 #
@@ -153,7 +156,7 @@ OUT_FOLDER=out
 #
 # Target object files
 #
-OBJS=openLRSng.o $(ARDUINO_LIB_OBJS) $(LIBRARIES_FOLDER)/libcore.a
+OBJS=openLRSng.o $(LIB_OBJS) $(ARDUINO_LIB_OBJS) $(LIBRARIES_FOLDER)/libcore.a
 
 #
 # Master target

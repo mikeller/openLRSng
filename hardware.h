@@ -319,7 +319,9 @@ void rxInitHWConfig()
 }
 #endif
 
-#define TelemetrySerial Serial
+//#define TelemetrySerial Serial
+SoftwareSerial softwareSerial(PPM_IN, RF_OUT_INDICATOR); // RX, TX
+#define TelemetrySerial softwareSerial
 
 #define Red_LED          13
 #define Green_LED        12
