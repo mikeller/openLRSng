@@ -403,7 +403,14 @@ void setup(void)
   setupProfile();
   txReadEeprom();
 
-  setupPPMinput();
+  if (bind_data.serial_baudrate && (bind_data.serial_baudrate <= 5)) {
+    serialMode = bind_data.serial_baudrate;
+  }
+
+  if (!serialMode) {
+	  setupPPMinput();
+  }
+
   ppmAge = 255;
 
   setupRfmInterrupt();
@@ -430,18 +437,15 @@ void setup(void)
 
   checkBND();
 
-  if (bind_data.serial_baudrate && (bind_data.serial_baudrate <= 5)) {
-    serialMode = bind_data.serial_baudrate;
-    if (serialMode == 3) { // SBUS
-      TelemetrySerial.begin(100000);
-    } else if (serialMode == 5) { // MULTI
-      TelemetrySerial.begin(100000, SERIAL_8E2);
-    } else {
-      TelemetrySerial.begin(115200);
-    }
-  } else {
+  if (!serialMode) {
     // switch to userdefined baudrate here
     TelemetrySerial.begin(bind_data.serial_baudrate);
+  } else if (serialMode == 3) { // SBUS
+    TelemetrySerial.begin(100000);
+  } else if (serialMode == 5) { // MULTI
+    TelemetrySerial.begin(100000, SERIAL_8E2);
+  } else { // serialModes Spektrum / SUMD
+    TelemetrySerial.begin(115200);
   }
   checkButton();
 
@@ -698,9 +702,13 @@ uint16_t getChannel(uint8_t ch)
   uint16_t v=512;
   ch = tx_config.chmap[ch];
   if (ch < 16) {
-    cli();  // disable interrupts when copying servo positions, to avoid race on 2 byte variable written by ISR
-    v = PPM[ch];
-    sei();
+    if (!serialMode) {
+      cli();  // disable interrupts when copying servo positions, to avoid race on 2 byte variable written by ISR
+      v = PPM[ch];
+      sei();
+    } else {
+      v = PPM[ch];
+    }
   } else if ((ch > 0xf1) && (ch < 0xfd)) {
     v = 12 + (ch - 0xf2) * 100;
   } else {
