@@ -115,7 +115,7 @@ volatile uint16_t startPulse = 0;
 
 void setupPPMinput()
 {
-/*  // Setup timer1 for input capture (PSC=8 -> 0.5ms precision)
+  // Setup timer1 for input capture (PSC=8 -> 0.5ms precision)
   TCCR1A = ((1 << WGM10) | (1 << WGM11));
   TCCR1B = ((1 << WGM12) | (1 << WGM13) | (1 << CS11) | (1 <<ICNC1));
   // normally capture on rising edge, allow invertting via SW flag
@@ -124,7 +124,6 @@ void setupPPMinput()
   }
   OCR1A = 65535;
   TIMSK1 |= (1 << ICIE1);   // Enable timer1 input capture interrupt
-*/
 }
 
 #else // sample PPM using pinchange interrupt
@@ -141,13 +140,12 @@ void setupPPMinput()
 
 void setupPPMinput(void)
 {
-/*  // Setup timer1 for input capture (PSC=8 -> 0.5ms precision)
+  // Setup timer1 for input capture (PSC=8 -> 0.5ms precision)
   TCCR1A = ((1 << WGM10) | (1 << WGM11));
   TCCR1B = ((1 << WGM12) | (1 << WGM13) | (1 << CS11));
   OCR1A = 65535;
   TIMSK1 = 0;
-  PPM_Pin_Interrupt_Setup
-*/
+//  PPM_Pin_Interrupt_Setup
 }
 #endif
 
@@ -447,12 +445,16 @@ void setup(void)
   } else { // serialModes Spektrum / SUMD
     TelemetrySerial.begin(115200);
   }
+  TelemetrySerial.stopListening();
+
   checkButton();
 
   Red_LED_OFF;
   buzzerOff();
 
-  setupPPMinput(); // need to do this to make sure ppm polarity is correct if profile was changed
+  if (!serialMode) {
+    setupPPMinput(); // need to do this to make sure ppm polarity is correct if profile was changed
+  }
 
   altPwrIndex=0;
   if(tx_config.flags & ALT_POWER) {
@@ -792,6 +794,8 @@ void loop(void)
     Red_LED_OFF;
   }
 
+  TelemetrySerial.listen();
+  delay(1);
   while (TelemetrySerial.available()) {
     uint8_t ch = TelemetrySerial.read();
     if (serialMode) {
@@ -801,6 +805,7 @@ void loop(void)
       serial_tail = (serial_tail + 1) % SERIAL_BUFSIZE;
     }
   }
+  TelemetrySerial.stopListening();
 
 #ifdef __AVR_ATmega32U4__
   if (serialMode) {
