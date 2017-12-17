@@ -244,7 +244,6 @@ inline HardwareSerial *getConsoleSerial()
 }
 #endif
 
-
 inline void processSerial(void)
 {
   if (serialMode != SERIAL_MODE_NONE) {
@@ -252,6 +251,39 @@ inline void processSerial(void)
       processChannelsFromSerial(rcSerial->read());
     }
   }
+}
+
+#define MULTI_TELEMETRY_FRSKY_HUB    0x03
+#define MULTI_FLAGS_INPUT_DETECTED   0x01
+#define MULTI_FLAGS_SERIAL_ENABLED   0X02
+#define MULTI_FLAGS_PROTOCOL_VALID   0x04
+#define MULTI_FLAGS_BINDING          0x08
+#define MULTI_FLAGS_WAITING_FOR_BIND 0x08
+
+void sendMultiTelemetry(bool inputDetected, bool protocolValid, bool isBinding)
+{
+    if (serialMode == SERIAL_MODE_MULTI) {
+        rcSerial->write('M');
+        rcSerial->write('P');
+        rcSerial->write(MULTI_TELEMETRY_FRSKY_HUB);
+        rcSerial->write(5);
+
+        uint8_t flags = MULTI_FLAGS_SERIAL_ENABLED;
+        if (inputDetected) {
+            flags = flags | MULTI_FLAGS_INPUT_DETECTED;
+        }
+        if (protocolValid) {
+            flags = flags | MULTI_FLAGS_PROTOCOL_VALID;
+        }
+        if (isBinding) {
+            flags = flags | MULTI_FLAGS_BINDING;
+        }
+        rcSerial->write(flags);
+        rcSerial->write(version >> 8);
+        rcSerial->write((version >> 4) & 0x0f);
+        rcSerial->write(version & 0x0f);
+        rcSerial->write(0);
+    }
 }
 
 void bindMode(void)
@@ -324,6 +356,8 @@ void bindMode(void)
 
     if (!bndMode) {
       processSerial();
+
+      sendMultiTelemetry(true, true, true);
     }
 
     watchdogReset();
@@ -743,6 +777,8 @@ static inline void processMulti(uint8_t c)
 
       frameIndex++;
     } else {
+      sendMultiTelemetry(true, false, false);
+
       frameIndex = 0;
     }
   } else if (frameIndex <= 3) {
@@ -990,6 +1026,8 @@ void loop(void)
           i++;
           if (bind_data.flags & TELEMETRY_FRSKY) {
             frskyUserData(rx_buf[i]);
+
+            sendMultiTelemetry(true, true, false);
           } else {
             rcSerial->write(rx_buf[i]);
           }
@@ -1000,7 +1038,7 @@ void loop(void)
         RX_ain1 = rx_buf[3];
 #ifdef TEST_DUMP_AFCC
 #define SIGNIT(x) ((int16_t)(((x&0x200)?0xFC00U:0)|(x&0x3FF)))
-        debugPrint(SIGNIT(rfmGetAFCC())) + ':' + SIGNIT((rx_buf[4] << 8) + rx_buf[5]) + '\n\n');
+        debugPrint(SIGNIT(rfmGetAFCC())) + ':' + SIGNIT((rx_buf[4] << 8) + rx_buf[5]) + '\n\n';
 #endif
         linkQualityRX = rx_buf[6];
       }
