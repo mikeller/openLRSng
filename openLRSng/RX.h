@@ -35,7 +35,6 @@ uint32_t hopInterval = 0;
 uint32_t hopTimeout = 0;
 uint32_t hopTimeoutSlow = 0;
 uint32_t RSSI_timeout = 0;
-uint32_t pktTimeDelta = 0;
 uint32_t nextBeaconTimeMs;
 uint32_t timeUs = 0;
 uint32_t timeMs= 0;
@@ -327,14 +326,13 @@ void loop(void)
 
   timeUs = micros();
   timeMs = millis();
-  pktTimeDelta = (timeUs - lastPacketTimeUs);  
 
   checkRSSI();
   
   if (linkAcquired) {
     // check RC link status after initial 'lock'
     checkLinkState();
-  } else if (pktTimeDelta > hopTimeoutSlow) {
+  } else if (timeUs - lastPacketTimeUs > hopTimeoutSlow) {
     // Still waiting for first packet, so hop slowly
     lastPacketTimeUs = timeUs;
     willhop = 1;
@@ -621,18 +619,19 @@ void updateSwitches(void)
 
 void failsafeApply(void)
 {
+  cli();
   for (uint8_t i = 0; i < PPM_CHANNELS; i++) {
     if ((i == (rx_config.RSSIpwm & 0x0f)) ||
         ((i == (rx_config.RSSIpwm & 0x0f) + 1) && (rx_config.RSSIpwm > 47))) {
       continue;
     }
     if (failsafePPM[i] & 0xfff) {
-      cli();
       PPM[i] = servoUs2Bits(failsafePPM[i] & 0xfff);
-      sei();
     }
-    updateSwitches();
   }
+  sei();
+
+  updateSwitches();
 }
 
 void setupOutputs(void)
@@ -772,7 +771,7 @@ void updateLBeep(bool packetLost)
 void checkRSSI(void)
 {
   // sample RSSI when packet is in the 'air'
-  if ((numberOfLostPackets < 2) && (lastRSSITimeUs != lastPacketTimeUs) && (pktTimeDelta > RSSI_timeout)) {
+  if ((numberOfLostPackets < 2) && (lastRSSITimeUs != lastPacketTimeUs) && (timeUs - lastPacketTimeUs > RSSI_timeout)) {
     lastRSSITimeUs = lastPacketTimeUs;
     lastRSSIvalue = rfmGetRSSI(); // Read the RSSI value
     RSSI_sum += lastRSSIvalue;    // tally up for average
@@ -790,7 +789,7 @@ void checkRSSI(void)
 
 void checkLinkState(void)
 {
-  if ((numberOfLostPackets < hopcount) && (pktTimeDelta > hopTimeout)) {
+  if ((numberOfLostPackets < hopcount) && (timeUs - lastPacketTimeUs > hopTimeout)) {
     // we lost a packet, so hop to next channel
     linkQuality <<= 1;
     willhop = 1;
@@ -804,7 +803,7 @@ void checkLinkState(void)
     Red_LED_ON;
     updateLBeep(true);
     set_RSSI_output();
-  } else if ((numberOfLostPackets == hopcount) && (pktTimeDelta > hopTimeoutSlow)) {
+  } else if ((numberOfLostPackets == hopcount) && (timeUs - lastPacketTimeUs > hopTimeoutSlow)) {
     // hop slowly to allow re-sync with TX
     linkQuality = 0;
     willhop = 1;
